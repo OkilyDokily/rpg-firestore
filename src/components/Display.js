@@ -1,4 +1,4 @@
-import React, { useState,useEffect } from 'react'
+import React, { useState } from 'react'
 import styled from 'styled-components';
 import { useSelector } from 'react-redux';
 import { useFirestoreConnect, isLoaded } from 'react-redux-firebase';
@@ -15,16 +15,13 @@ const DisplayStyle = styled.div`
 `;
 
 
-
-
 function Display(props) {
   const [room, changeRoom] = useState("X61whV3TLafhIwdZrees")
+  const [lastCommand, changeLastCommand] = useState("none");
 
+  const [holdKeys, addKey] = useState("none");
+  const [inspectMessage, addMessage] = useState("");
 
-  useEffect((prevProps)=>
-  {
-
-  })
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -33,7 +30,7 @@ function Display(props) {
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
 
   function getAdjacentRooms(current) {
-    console.log(current,"current")
+
     let obj = {
       left: rooms.find(x => x.id === current.left),
       right: rooms.find(x => x.id === current.right),
@@ -42,37 +39,103 @@ function Display(props) {
       up: rooms.find(x => x.id === current.up),
       down: rooms.find(x => x.id === current.down)
     }
+
     return obj;
   }
 
-  function respondToCommandFromProps(current){
-    if (getAdjacentRooms(current)[props.command].id !== undefined && getAdjacentRooms(current)[props.command].id !== room) {
-      changeRoom(current[props.command].id)
+  function addItemToInventory(current, takeid) {
+    if (current[takeid]?.type === "key") {
+
     }
   }
- 
+
+  function revealMessage(current, command) {
+    const regex = new RegExp('^(inspect) (\\w+)$');
+    let result = command.match(regex)[2];
+    addMessage(current.inspect?.[result].message);
+    if (current.inspect?.[result]?.takeid) {
+      addItemToInventory(current, current.inspect?.[result]?.takeid);
+    }
+  }
+
+  function respondToCommandFromProps(current) {
+    const regex = new RegExp('^inspect ');
+    if (regex.test(props.command)) {
+      revealMessage(current, props.command);
+    }
+    else {
+      let adjacentRooms = getAdjacentRooms(current);
+
+      if (adjacentRooms[props.command] !== undefined) {
+
+        if (current.locked?.[props.command]) {
+
+
+        }
+        else {
+          changeRoom(current[props.command])
+        }
+      }
+    }
+
+  }
+
 
   function displayRooms(current) {
 
     let obj = getAdjacentRooms(current);
-    let display = "\n";
+    let display = "Options\n";
     Object.keys(obj).forEach(x => {
       if (obj[x] !== undefined) {
-        display += "To your " + x + " is the " + obj[x].name + ".\n"
+        display += ":" + x + ".\n"
       }
     }
     )
     return display;
   }
 
+  function displayInspect(current) {
+    let display = "Inspectables:\n";
+    if (current?.inspect) {
+      Object.keys(current.inspect).forEach(x => {
+        display += "You see a :" + x + ".\n"
+      })
+    }
+    return display;
+  }
+
+  function displayTake(current) {
+
+  }
+
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
+
     let current = rooms.find(x => x.id === room);
-    respondToCommandFromProps();
-    
+
+    if (lastCommand !== props.command) {
+      changeLastCommand(props.command);
+
+      respondToCommandFromProps(current);
+    }
+
     return (
       <DisplayStyle>
-        {current.message}
-        {displayRooms(current)}
+        <div>{current.name}</div>
+        <div>
+          {current.message}
+        </div>
+
+        <div>
+          {displayRooms(current)}
+        </div>
+        <div>
+          {displayInspect(current)}
+          {inspectMessage}
+        </div>
+        <div>
+          {displayTake(current)}
+        </div>
+
       </DisplayStyle>
     )
   }
