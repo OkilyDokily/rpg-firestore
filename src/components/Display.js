@@ -16,18 +16,22 @@ const DisplayStyle = styled.div`
 
 
 function Display(props) {
+
+
   const [room, changeRoom] = useState("X61whV3TLafhIwdZrees")
-  const [lastCommand, changeLastCommand] = useState("none");
+  const [lastCall,changeLastCall] = useState(0);
 
-  const [holdKeys, addKey] = useState("none");
+  const [holdKeys, addKey] = useState([]);
   const [inspectMessage, addMessage] = useState("");
-
-
+  
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
   ]);
 
+
+
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
+
 
   function getAdjacentRooms(current) {
 
@@ -42,10 +46,10 @@ function Display(props) {
 
     return obj;
   }
-
   function addItemToInventory(current, takeid) {
-    if (current[takeid]?.type === "key") {
 
+    if (current?.items[takeid]?.type === "key") {
+      addKey([...holdKeys, current.items[takeid]]);
     }
   }
 
@@ -54,6 +58,7 @@ function Display(props) {
     let result = command.match(regex)[2];
     addMessage(current.inspect?.[result].message);
     if (current.inspect?.[result]?.takeid) {
+     
       addItemToInventory(current, current.inspect?.[result]?.takeid);
     }
   }
@@ -69,10 +74,13 @@ function Display(props) {
       if (adjacentRooms[props.command] !== undefined) {
 
         if (current.locked?.[props.command]) {
-
-
+          if(holdKeys.find(x=>x[room] === props.command)){
+            addMessage("");
+            changeRoom(current[props.command])
+          }
         }
         else {
+          addMessage("");
           changeRoom(current[props.command])
         }
       }
@@ -104,18 +112,14 @@ function Display(props) {
     return display;
   }
 
-  function displayTake(current) {
-
-  }
 
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
     let current = rooms.find(x => x.id === room);
-
-    if (lastCommand !== props.command) {
-      changeLastCommand(props.command);
-
+ 
+    if (lastCall !== props.call) {
       respondToCommandFromProps(current);
+      changeLastCall(props.call);
     }
 
     return (
@@ -132,10 +136,6 @@ function Display(props) {
           {displayInspect(current)}
           {inspectMessage}
         </div>
-        <div>
-          {displayTake(current)}
-        </div>
-
       </DisplayStyle>
     )
   }
