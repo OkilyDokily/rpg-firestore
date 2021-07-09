@@ -14,24 +14,24 @@ const DisplayStyle = styled.div`
   height: 400px;
 `;
 
-
+const headLine = {
+  textDecoration: "underline"
+}
 function Display(props) {
 
-
   const [room, changeRoom] = useState("X61whV3TLafhIwdZrees")
-  const [lastCall,changeLastCall] = useState(0);
+  const [lastCall, changeLastCall] = useState(0);
 
   const [holdKeys, addKey] = useState([]);
-  const [inspectMessage, addMessage] = useState("");
-  
+  const [inspectMessage, addInspectMessage] = useState("");
+
+  const [unlockedList, addUnlocked] = useState([]);
+
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
   ]);
 
-
-
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
-
 
   function getAdjacentRooms(current) {
 
@@ -46,8 +46,8 @@ function Display(props) {
 
     return obj;
   }
-  function addItemToInventory(current, takeid) {
 
+  function addItemToInventory(current, takeid) {
     if (current?.items[takeid]?.type === "key") {
       addKey([...holdKeys, current.items[takeid]]);
     }
@@ -56,16 +56,37 @@ function Display(props) {
   function revealMessage(current, command) {
     const regex = new RegExp('^(inspect) (\\w+)$');
     let result = command.match(regex)[2];
-    addMessage(current.inspect?.[result].message);
+    addInspectMessage(current.inspect?.[result].message);
     if (current.inspect?.[result]?.takeid) {
-     
+
       addItemToInventory(current, current.inspect?.[result]?.takeid);
     }
   }
 
+  function addKeyToUsedIfItExistsAndIsUsedAtTheRightPlace(current,command){
+    const regex = new RegExp('^(unlock) (\\w+)$');
+    let result = command.match(regex)[2];
+    let key = holdKeys.find(x => x[room] === result)
+    console.log(key,"key")
+
+    let alreadyFound = unlockedList.find(x => x[room] === result)
+    console.log(alreadyFound, "already found");
+    console.log(current?.locked[result],"current result")
+    if (current?.locked[result] && key && !alreadyFound){
+      addInspectMessage("You've unlocked the door");
+      addUnlocked([...unlockedList,key])
+    }
+  }
+
   function respondToCommandFromProps(current) {
-    const regex = new RegExp('^inspect ');
-    if (regex.test(props.command)) {
+    addInspectMessage("");
+
+    const inspectregex = new RegExp('^inspect ');
+    const unlockregex = new RegExp('^unlock ');
+    if (unlockregex.test(props.command)) {
+      addKeyToUsedIfItExistsAndIsUsedAtTheRightPlace(current,props.command);
+    }
+    if (inspectregex.test(props.command)) {
       revealMessage(current, props.command);
     }
     else {
@@ -74,13 +95,20 @@ function Display(props) {
       if (adjacentRooms[props.command] !== undefined) {
 
         if (current.locked?.[props.command]) {
-          if(holdKeys.find(x=>x[room] === props.command)){
-            addMessage("");
-            changeRoom(current[props.command])
+          if (holdKeys.find(x => x[room] === props.command)) {
+            if (!unlockedList.find(x => x[current.id] === props.command)){
+              console.log(unlockedList);
+              addInspectMessage("You must use your key to unlock this door before you can open it.")
+            }
+            else{
+              changeRoom(current[props.command])
+            }
+          }
+          else{
+            addInspectMessage("The door is locked.")
           }
         }
         else {
-          addMessage("");
           changeRoom(current[props.command])
         }
       }
@@ -112,11 +140,20 @@ function Display(props) {
     return display;
   }
 
+  function displayKeys(){
+    let display = "";
+    let keys = holdKeys.length;
+    if(keys > 0){
+      display += "You have " + keys + " key/s."
+    }
+    return display;
+  }
+
 
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
     let current = rooms.find(x => x.id === room);
- 
+
     if (lastCall !== props.call) {
       respondToCommandFromProps(current);
       changeLastCall(props.call);
@@ -124,7 +161,7 @@ function Display(props) {
 
     return (
       <DisplayStyle>
-        <div>{current.name}</div>
+        <div style={headLine}>{current.name}</div>
         <div>
           {current.message}
         </div>
@@ -135,6 +172,9 @@ function Display(props) {
         <div>
           {displayInspect(current)}
           {inspectMessage}
+        </div>
+        <div>
+          {displayKeys()}
         </div>
       </DisplayStyle>
     )
