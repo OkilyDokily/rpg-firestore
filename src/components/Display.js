@@ -25,8 +25,6 @@ function Display(props) {
   const [holdKeys, addKey] = useState([]);
   const [inspectMessage, addInspectMessage] = useState("");
 
-  const [unlockedList, addUnlocked] = useState([]);
-
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
   ]);
@@ -58,7 +56,6 @@ function Display(props) {
     let result = command.match(regex)[2];
     addInspectMessage(current.inspect?.[result].message);
     if (current.inspect?.[result]?.takeid) {
-
       addItemToInventory(current, current.inspect?.[result]?.takeid);
     }
   }
@@ -66,15 +63,17 @@ function Display(props) {
   function addKeyToUsedIfItExistsAndIsUsedAtTheRightPlace(current,command){
     const regex = new RegExp('^(unlock) (\\w+)$');
     let result = command.match(regex)[2];
-    let key = holdKeys.find(x => x[room] === result)
+    let key = holdKeys.findIndex(x => x[room] === result)
     console.log(key,"key")
 
-    let alreadyFound = unlockedList.find(x => x[room] === result)
+    let alreadyFound = holdKeys.findIndex(x => x[room] === result && x.used === true)
     console.log(alreadyFound, "already found");
     console.log(current?.locked[result],"current result")
     if (current?.locked[result] && key && !alreadyFound){
       addInspectMessage("You've unlocked the door");
-      addUnlocked([...unlockedList,key])
+      let newArr = [...holdKeys];
+      newArr[key].used = true;
+      addKey([...newArr]);
     }
   }
 
@@ -96,8 +95,8 @@ function Display(props) {
 
         if (current.locked?.[props.command]) {
           if (holdKeys.find(x => x[room] === props.command)) {
-            if (!unlockedList.find(x => x[current.id] === props.command)){
-              console.log(unlockedList);
+            if (holdKeys.find(x => x[current.id] === props.command && !x.used)){
+              console.log(holdKeys);
               addInspectMessage("You must use your key to unlock this door before you can open it.")
             }
             else{
