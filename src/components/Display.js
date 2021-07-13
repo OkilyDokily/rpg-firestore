@@ -22,8 +22,9 @@ function Display(props) {
   const [room, changeRoom] = useState("X61whV3TLafhIwdZrees")
   const [lastCall, incrementCall] = useState(0);
 
-  const [holdKeys, addKey] = useState([]);
+  const [holdKeys, addKey] = useState({});
   const [message, changeMessage] = useState("");
+  const directions = ["up", "down", "left", "right","forward", "backward"];
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -31,52 +32,65 @@ function Display(props) {
 
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
 
-  function getAdjacentRooms(current) {
 
-    let obj = {
-      left: rooms.find(x => x.id === current.left),
-      right: rooms.find(x => x.id === current.right),
-      forward: rooms.find(x => x.id === current.forward),
-      backward: rooms.find(x => x.id === current.backward),
-      up: rooms.find(x => x.id === current.up),
-      down: rooms.find(x => x.id === current.down)
-    }
-
-    return obj;
-  }
-
-  function addItemToInventory(current, takeid) {
-    if (current?.items[takeid]?.type === "key") {
-      let key = {...current.items[takeid]};
+  function addItemToInventory(item) {
+    if (item.type === "key") {
+      let key = { ...item }
       key.used = false;
-      addKey([...holdKeys, key]);
+      addKey({ ...holdKeys, [key.room]: { ...key } });
     }
   }
 
   function processInspectCommand(current, command) {
     const regex = new RegExp('^(inspect) (\\w+)$');
+
     let item = command.match(regex)[2];
-    const inspectable = (current.inspectables).find(x => x.keyword === item);
-   
+    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
+    console.log(inspectable, "inspectable")
     changeMessage(inspectable.message);
     if (inspectable.takeid) {
-      addItemToInventory(current, current.items[inspectable.takeid]);
+      addItemToInventory(current.items[inspectable.takeid]);
     }
   }
 
-  function addKeyToUsedIfItExistsAndIsUnusedAndIsUsedAtTheRightPlace(current, command) {
+  function conditionallyAddKeyToUsed(current, command) {
     const regex = new RegExp('^(unlock) (\\w+)$');
     let direction = command.match(regex)[2];
-   
-    let key = holdKeys.findIndex(x => x[room] === direction);
 
-    let alreadyFound = holdKeys[key].used;
-   
-    if (current?.locked[direction] && (key !== undefined) && !alreadyFound) {
+    let key = Object.keys(holdKeys).find(x => holdKeys[room].direction === direction);
+
+    let alreadyFound = holdKeys[key]?.used;
+
+    if (current?.locked[direction] && key && !alreadyFound) {
       changeMessage("You've unlocked the door");
-      let newArr = [...holdKeys];
-      newArr[key].used = true;
-      addKey([...newArr]);
+      let newObj = { ...holdKeys };
+      let newKey = { ...holdKeys[key] };
+      newKey.used = true;
+      addKey({ ...newObj, [room]: { ...newKey } });
+    }
+  }
+
+  function handleChangeRoom(current,direction) {
+   
+    if (current[direction]) {
+
+      if (current.locked?.[direction]) {
+        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === direction)) {
+          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === direction && holdKeys[room]?.used === false)) {
+
+            changeMessage("You must use your key to unlock this door before you can open it.")
+          }
+          else {
+            changeRoom(current[direction])
+          }
+        }
+        else {
+          changeMessage("The door is locked.")
+        }
+      }
+      else {
+        changeRoom(current[direction])
+      }
     }
   }
 
@@ -86,45 +100,23 @@ function Display(props) {
     const inspectregex = new RegExp('^inspect ');
     const unlockregex = new RegExp('^unlock ');
     if (unlockregex.test(props.command)) {
-      addKeyToUsedIfItExistsAndIsUnusedAndIsUsedAtTheRightPlace(current, props.command);
-    }
-    if (inspectregex.test(props.command)) {
-      processInspectCommand(current, props.command);
-    }
-    else {
-      let adjacentRooms = getAdjacentRooms(current);
-
-      if (adjacentRooms[props.command] !== undefined) {
-
-        if (current.locked?.[props.command]) {
-          if (holdKeys.find(x => x[room] === props.command)) {
-            if (holdKeys.find(x => x[current.id] === props.command && !x.used)) {
-           
-              changeMessage("You must use your key to unlock this door before you can open it.")
-            }
-            else {
-              changeRoom(current[props.command])
-            }
-          }
-          else {
-            changeMessage("The door is locked.")
-          }
+      conditionallyAddKeyToUsed(current, props.command);
+    } else
+      if (inspectregex.test(props.command)) {
+        processInspectCommand(current, props.command);
+      } else
+        if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
+          let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
+          handleChangeRoom(current,direction);
         }
-        else {
-          changeRoom(current[props.command])
-        }
-      }
-    }
-
   }
 
 
   function displayRooms(current) {
 
-    let obj = getAdjacentRooms(current);
-    let display = "Options\n";
-    Object.keys(obj).forEach(x => {
-      if (obj[x] !== undefined) {
+    let display = "Available directions\n";
+    directions.forEach(x => {
+      if (current[x]) {
         display += ":" + x + ".\n"
       }
     }
@@ -134,9 +126,9 @@ function Display(props) {
 
   function displayInspect(current) {
     let display = "Inspectables:\n";
-    if (current?.inspect) {
-      Object.keys(current.inspect).forEach(x => {
-        display += "You see a :" + x + ".\n"
+    if (current?.inspectables) {
+      current.inspectables.forEach(x => {
+        display += "You see a " + x.title + ".\n"
       })
     }
     return display;
@@ -144,7 +136,7 @@ function Display(props) {
 
   function displayKeys() {
     let display = "";
-    let keys = holdKeys.filter(x => !x.used).length;
+    let keys = Object.keys(holdKeys).filter(x => !holdKeys[x]?.used).length;
     if (keys > 0) {
       display += "You have " + keys + " key/s."
     }
@@ -155,7 +147,7 @@ function Display(props) {
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
     let current = rooms.find(x => x.id === room);
-
+    console.log(current,"current")
     if (lastCall !== props.call) {
       respondToCommandFromProps(current);
       incrementCall(props.call);
