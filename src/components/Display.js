@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import styled from 'styled-components';
 import { useSelector } from 'react-redux';
 import { useFirestoreConnect, isLoaded } from 'react-redux-firebase';
+import * as a from '../helpers/directions';
 
 const DisplayStyle = styled.div`
   font-size: 24px;
@@ -14,6 +15,7 @@ const DisplayStyle = styled.div`
   height: 400px;
 `;
 
+
 const headLine = {
   textDecoration: "underline"
 }
@@ -24,7 +26,9 @@ function Display(props) {
 
   const [holdKeys, addKey] = useState({});
   const [message, changeMessage] = useState("");
-  const directions = ["up", "down", "left", "right","forward", "backward"];
+  const directions = ["up", "down", "left", "right", "forward", "backward"];
+  const [previousDirection, setPreviousDirection] = useState("backward");
+  console.log(previousDirection,"previousDirection")
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -70,18 +74,19 @@ function Display(props) {
     }
   }
 
-  function handleChangeRoom(current,direction) {
+  function handleChangeRoom(current, direction) {
+    const roomDirection = handleToRoomDirection(direction);
    
-    if (current[direction]) {
-
-      if (current.locked?.[direction]) {
-        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === direction)) {
-          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === direction && holdKeys[room]?.used === false)) {
+    if (current[roomDirection]) {
+      setPreviousDirection(a.oppositeDirections[roomDirection]);
+      if (current.locked?.[roomDirection]) {
+        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
+          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
 
             changeMessage("You must use your key to unlock this door before you can open it.")
           }
           else {
-            changeRoom(current[direction])
+            changeRoom(current[roomDirection])
           }
         }
         else {
@@ -89,7 +94,7 @@ function Display(props) {
         }
       }
       else {
-        changeRoom(current[direction])
+        changeRoom(current[roomDirection])
       }
     }
   }
@@ -107,17 +112,34 @@ function Display(props) {
       } else
         if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
           let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
-          handleChangeRoom(current,direction);
+          handleChangeRoom(current, direction);
         }
   }
 
+  function handleShowDirection(direction) {
+    if (previousDirection.includes(["left", "right", "forward"])) {
+      return a.showDirections[previousDirection][direction];
+    }
+    else {
+      return direction;
+    }
+  }
+
+  function handleToRoomDirection(direction) {
+    if (previousDirection.includes(["left", "right", "forward"])) {
+      return a.toRoomDirections[previousDirection][direction];
+    }
+    else {
+      return direction;
+    }
+  }
 
   function displayRooms(current) {
 
     let display = "Available directions\n";
     directions.forEach(x => {
       if (current[x]) {
-        display += ":" + x + ".\n"
+        display += ":" + handleShowDirection(x) + ".\n"
       }
     }
     )
@@ -140,6 +162,7 @@ function Display(props) {
     if (keys > 0) {
       display += "You have " + keys + " key/s."
     }
+    console.log("display key previous direction", previousDirection)
     return display;
   }
 
@@ -147,7 +170,7 @@ function Display(props) {
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
     let current = rooms.find(x => x.id === room);
-    console.log(current,"current")
+ 
     if (lastCall !== props.call) {
       respondToCommandFromProps(current);
       incrementCall(props.call);
