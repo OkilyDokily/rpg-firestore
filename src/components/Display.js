@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux';
 import { useFirestoreConnect, isLoaded } from 'react-redux-firebase';
 import * as a from '../helpers/directions';
 
+
+
 const DisplayStyle = styled.div`
   font-size: 24px;
   font-family: Consolas;
@@ -21,7 +23,7 @@ const headLine = {
 }
 function Display(props) {
 
-  const [room, changeRoom] = useState("X61whV3TLafhIwdZrees")
+  const [room, changeRoom] = useState("beginning")
   const [lastCall, incrementCall] = useState(0);
 
   const [holdKeys, addKey] = useState({});
@@ -29,7 +31,8 @@ function Display(props) {
   const directions = ["up", "down", "left", "right", "forward", "backward"];
   const [previousDirection, setPreviousDirection] = useState("backward");
   const [inspectableState, setInspectableState] = useState([]);
-  const [portalGun,togglePortalGun] = useState(false);
+  const [portalGun, togglePortalGun] = useState(false);
+  const [takeIdArray,addToTakeIdArray] = useState([]);
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -38,237 +41,260 @@ function Display(props) {
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
 
 
-  function addItemToInventory(item) {
+
+  function addItemToInventory(item,takeid) {
     if (item.type === "key") {
       let key = { ...item }
       key.used = false;
       addKey({ ...holdKeys, [key.room]: { ...key } });
+      addToTakeIdArray([...takeIdArray,takeid]);
     }
     if (item.type === "portalgun") {
+      togglePortalGun({ ...item })
+      addToTakeIdArray([...takeIdArray, takeid]);
+    }
+    
+  }
 
+
+  function processInspectCommand(current, command) {
+    const regex = new RegExp('^(inspect) (\\w+)$');
+
+    let item = command.match(regex)[2];
+    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
+
+    //prevent showing message for takeid that is already in inventory
+
+    if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined){
+      changeMessage(inspectable.takemessage);
+    }
+    else{
+      changeMessage(inspectable.message);
+    }
+    if(!takeIdArray.includes(inspectable.takeid))
+    { 
+      if (inspectable.takeid) {
+        addItemToInventory(current.items[inspectable.takeid],inspectable.takeid);
+      }
     }
   }
-}
 
-function processInspectCommand(current, command) {
-  const regex = new RegExp('^(inspect) (\\w+)$');
+  function conditionallyAddKeyToUsed(current, command) {
+    const regex = new RegExp('^(unlock) (\\w+)$');
+    let direction = command.match(regex)[2];
 
-  let item = command.match(regex)[2];
-  const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
+    let key = Object.keys(holdKeys).find(x => holdKeys[room].direction === direction);
 
-  changeMessage(inspectable.message);
-  if (inspectable.takeid) {
-    addItemToInventory(current.items[inspectable.takeid]);
+    let alreadyFound = holdKeys[key]?.used;
+
+    if (current?.locked?.[direction] && key && !alreadyFound) {
+      changeMessage("You've unlocked the door");
+      let newObj = { ...holdKeys };
+      let newKey = { ...holdKeys[key] };
+      newKey.used = true;
+      addKey({ ...newObj, [room]: { ...newKey } });
+    }
   }
-}
 
-function conditionallyAddKeyToUsed(current, command) {
-  const regex = new RegExp('^(unlock) (\\w+)$');
-  let direction = command.match(regex)[2];
+  function handleChangeRoom(current, direction) {
+    const roomDirection = handleToRoomDirection(direction);
 
-  let key = Object.keys(holdKeys).find(x => holdKeys[room].direction === direction);
+    if (current[roomDirection]) {
+      setPreviousDirection(a.oppositeDirections[roomDirection]);
+      if (current.locked?.[roomDirection]) {
+        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
+          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
 
-  let alreadyFound = holdKeys[key]?.used;
-
-  if (current?.locked[direction] && key && !alreadyFound) {
-    changeMessage("You've unlocked the door");
-    let newObj = { ...holdKeys };
-    let newKey = { ...holdKeys[key] };
-    newKey.used = true;
-    addKey({ ...newObj, [room]: { ...newKey } });
-  }
-}
-
-function handleChangeRoom(current, direction) {
-  const roomDirection = handleToRoomDirection(direction);
-
-  if (current[roomDirection]) {
-    setPreviousDirection(a.oppositeDirections[roomDirection]);
-    if (current.locked?.[roomDirection]) {
-      if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
-        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
-
-          changeMessage("You must use your key to unlock this door before you can open it.")
+            changeMessage("You must use your key to unlock this door before you can open it.")
+          }
+          else {
+            changeRoom(current[roomDirection])
+          }
         }
         else {
-          changeRoom(current[roomDirection])
+          changeMessage("The door is locked.")
         }
       }
       else {
-        changeMessage("The door is locked.")
+        changeRoom(current[roomDirection])
       }
     }
-    else {
-      changeRoom(current[roomDirection])
+  }
+
+  const [fumbled, toggleFumbled] = useState(false);
+  function handleFumbleAround(current) {
+    if (current.fumble) {
+      changeMessage("You reach out and eventually find a string, maybe you should yank it?");
+      toggleFumbled(!fumbled);
     }
   }
-}
 
-const [fumbled, toggleFumbled] = useState(false);
-function handleFumbleAround(current) {
-  if (current.fumble) {
-    changeMessage("You reach out and eventually find a string, maybe you should yank it?");
-    toggleFumbled(!fumbled);
+  function makeInspectablesVisible(current, arr) {
+    arr.forEach(x => { setInspectableState([...inspectableState, current.inspectables[x].title]) });
   }
-}
 
-function makeInspectablesVisible(current, arr) {
-  arr.forEach(x => { setInspectableState([...inspectableState, current.inspectables[x].title]) });
-}
-
-function handleYank(current) {
-  if (fumbled) {
-    changeMessage("A speaker blares, and then there was light.");
-    makeInspectablesVisible(current, [0]);
+  function handleYank(current) {
+    if (fumbled) {
+      changeMessage("A speaker blares, and then there was light.");
+      makeInspectablesVisible(current, [0]);
+    }
   }
-}
 
-function handleUsePortal(current) {
+  function handleUsePortal(current) {
+    if (portalGun) {
+      let array = [...portalGun.rooms]
+      let room = array[Math.floor(Math.random() * array.length)];
+      changeRoom(room);
+    }
+  }
 
-}
+  function respondToCommandFromProps(current) {
+    changeMessage("");
 
-function respondToCommandFromProps(current) {
-  changeMessage("");
+    const inspectregex = new RegExp('^inspect ');
+    const unlockregex = new RegExp('^unlock ');
+    const fumblearoundregex = new RegExp('^fumble around$');
+    const yankregex = new RegExp('^yank');
+    const useportalregex = new RegExp('^use portal$');
 
-  const inspectregex = new RegExp('^inspect ');
-  const unlockregex = new RegExp('^unlock ');
-  const fumblearoundregex = new RegExp('^fumble around$');
-  const yankregex = new RegExp('^yank');
-  const useportalregex = new RegExp('^use portal$');
-
-  if (unlockregex.test(props.command)) {
-    conditionallyAddKeyToUsed(current, props.command);
-  } else
-    if (inspectregex.test(props.command)) {
-      processInspectCommand(current, props.command);
+    if (unlockregex.test(props.command)) {
+      conditionallyAddKeyToUsed(current, props.command);
     } else
-      if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
-        let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
-        handleChangeRoom(current, direction);
-      }
-      else if (fumblearoundregex.test(props.command)) {
-        handleFumbleAround(current);
-      }
-      else if (yankregex.test(props.command)) {
-        handleYank(current);
-      }
-      else if (useportalregex.test(props.command)) {
-        handleUsePortal(current);
-      }
-}
-
-
-function handleShowDirection(direction) {
-  if (["up", "down"].includes(direction)) {
-    return direction;
+      if (inspectregex.test(props.command)) {
+        processInspectCommand(current, props.command);
+      } else
+        if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
+          let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
+          handleChangeRoom(current, direction);
+        }
+        else if (fumblearoundregex.test(props.command)) {
+          handleFumbleAround(current);
+        }
+        else if (yankregex.test(props.command)) {
+          handleYank(current);
+        }
+        else if (useportalregex.test(props.command)) {
+          handleUsePortal(current);
+        }
   }
-  else
-    if (["left", "right", "forward"].includes(previousDirection)) {
-      return a.showDirections[previousDirection][direction];
-    }
-    else {
+
+
+  function handleShowDirection(direction) {
+    if (["up", "down"].includes(direction)) {
       return direction;
     }
-}
-
-function handleToRoomDirection(direction) {
-  if (["up", "down"].includes(direction)) {
-    return direction;
+    else
+      if (["left", "right", "forward"].includes(previousDirection)) {
+        return a.showDirections[previousDirection][direction];
+      }
+      else {
+        return direction;
+      }
   }
-  else
-    if (["left", "right", "forward"].includes(previousDirection)) {
-      return a.toRoomDirections[previousDirection][direction];
-    }
-    else {
+
+  function handleToRoomDirection(direction) {
+    if (["up", "down"].includes(direction)) {
       return direction;
     }
-}
+    else
+      if (["left", "right", "forward"].includes(previousDirection)) {
+        return a.toRoomDirections[previousDirection][direction];
+      }
+      else {
+        return direction;
+      }
+  }
 
 
-function displayRooms(current) {
+  function displayRooms(current) {
 
-  let display = "Available directions\n";
-  directions.forEach(x => {
+    let display = "Available directions: ";
+    directions.forEach((x, index) => {
+      if (current[x]) {
+        display += "" + handleShowDirection(x) + ", "
+      }
+    }
+    )
+    display = display.slice(0, -2);
+    display += ".";
+    return display;
+  }
 
-    if (current[x]) {
-      display += ":" + handleShowDirection(x) + ".\n"
+  function displayInspect(current) {
+    let display = "";
+    if (current?.inspectables) {
+      current.inspectables.forEach(x => {
+        display += processInspectableItem(x);
+      })
+    }
+    return display;
+  }
+
+  function processInspectableItem(item) {
+
+    if (item.notvisible === true && !inspectableState.includes(item.title)) {
+      return "";
+    }
+    else {
+      return "You see  " + item.title + "\n";
     }
   }
-  )
-  return display;
-}
 
-function displayInspect(current) {
-  let display = "Inspectables:\n";
-  if (current?.inspectables) {
-    current.inspectables.forEach(x => {
-      display += processInspectableItem(x);
-    })
+
+  function displayKeys() {
+    let display = "";
+    let keys = Object.keys(holdKeys).filter(x => !holdKeys[x]?.used).length;
+    if (keys > 0) {
+      display += "You have " + keys + " key/s."
+    }
+
+    return display;
   }
-  return display;
-}
 
-function processInspectableItem(item) {
 
-  if (item.notvisible === true && !inspectableState.includes(item.title)) {
-    return "";
+
+  if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
+
+    let current = rooms.find(x => x.id === room);
+
+    if (lastCall !== props.call) {
+      respondToCommandFromProps(current);
+      incrementCall(props.call);
+    }
+
+    return (
+      <DisplayStyle>
+        <div style={headLine}>{current.name}</div>
+        <div>
+          {current.message}
+        </div>
+
+        <div>
+          {current.thought}
+        </div>
+        <div>
+          {displayRooms(current)}
+        </div>
+        <div>
+          {displayInspect(current)}
+          {message}
+        </div>
+        <div>
+          {displayKeys()}
+        </div>
+      </DisplayStyle>
+    )
   }
   else {
-    console.log(item, "you see")
-    return "You see a " + item.title + ".\n";
+    return (
+      <DisplayStyle>
+
+      </DisplayStyle>
+
+    )
   }
 }
 
-
-function displayKeys() {
-  let display = "";
-  let keys = Object.keys(holdKeys).filter(x => !holdKeys[x]?.used).length;
-  if (keys > 0) {
-    display += "You have " + keys + " key/s."
-  }
-
-  return display;
-}
-
-
-if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
-
-  let current = rooms.find(x => x.id === room);
-
-  if (lastCall !== props.call) {
-    respondToCommandFromProps(current);
-    incrementCall(props.call);
-  }
-
-  return (
-    <DisplayStyle>
-      <div style={headLine}>{current.name}</div>
-      <div>
-        {current.message}
-      </div>
-
-      <div>
-        {displayRooms(current)}
-      </div>
-      <div>
-        {displayInspect(current)}
-        {message}
-      </div>
-      <div>
-        {displayKeys()}
-      </div>
-    </DisplayStyle>
-  )
-}
-else {
-  return (
-    <DisplayStyle>
-
-    </DisplayStyle>
-
-  )
-}
-}
 
 
 export default Display;
