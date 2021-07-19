@@ -5,7 +5,6 @@ import { useFirestoreConnect, isLoaded } from 'react-redux-firebase';
 import * as a from '../helpers/directions';
 
 
-
 const DisplayStyle = styled.div`
   font-size: 24px;
   font-family: Consolas;
@@ -17,10 +16,15 @@ const DisplayStyle = styled.div`
   height: 400px;
 `;
 
+const InnerDivs = styled.div`
+  margin-bottom: 10px;
+`;
+
 
 const headLine = {
   textDecoration: "underline"
 }
+
 function Display(props) {
 
   const [room, changeRoom] = useState("beginning")
@@ -32,7 +36,7 @@ function Display(props) {
   const [previousDirection, setPreviousDirection] = useState("backward");
   const [inspectableState, setInspectableState] = useState([]);
   const [portalGun, togglePortalGun] = useState(false);
-  const [takeIdArray,addToTakeIdArray] = useState([]);
+  const [takeIdArray, addToTakeIdArray] = useState([]);
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -40,22 +44,18 @@ function Display(props) {
 
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
 
-
-
-  function addItemToInventory(item,takeid) {
+  function addItemToInventory(item, takeid) {
     if (item.type === "key") {
       let key = { ...item }
       key.used = false;
       addKey({ ...holdKeys, [key.room]: { ...key } });
-      addToTakeIdArray([...takeIdArray,takeid]);
+      addToTakeIdArray([...takeIdArray, takeid]);
     }
     if (item.type === "portalgun") {
       togglePortalGun({ ...item })
       addToTakeIdArray([...takeIdArray, takeid]);
     }
-    
   }
-
 
   function processInspectCommand(current, command) {
     const regex = new RegExp('^(inspect) (\\w+)$');
@@ -64,17 +64,15 @@ function Display(props) {
     const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
 
     //prevent showing message for takeid that is already in inventory
-
-    if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined){
+    if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined) {
       changeMessage(inspectable.takemessage);
     }
-    else{
+    else {
       changeMessage(inspectable.message);
     }
-    if(!takeIdArray.includes(inspectable.takeid))
-    { 
+    if (!takeIdArray.includes(inspectable.takeid)) {
       if (inspectable.takeid) {
-        addItemToInventory(current.items[inspectable.takeid],inspectable.takeid);
+        addItemToInventory(current.items[inspectable.takeid], inspectable.takeid);
       }
     }
   }
@@ -82,9 +80,7 @@ function Display(props) {
   function conditionallyAddKeyToUsed(current, command) {
     const regex = new RegExp('^(unlock) (\\w+)$');
     let direction = command.match(regex)[2];
-
     let key = Object.keys(holdKeys).find(x => holdKeys[room].direction === direction);
-
     let alreadyFound = holdKeys[key]?.used;
 
     if (current?.locked?.[direction] && key && !alreadyFound) {
@@ -123,10 +119,10 @@ function Display(props) {
 
   const [fumbled, toggleFumbled] = useState(false);
   function handleFumbleAround(current) {
-    if (current.fumble) {
-      changeMessage("You reach out and eventually find a string, maybe you should yank it?");
-      toggleFumbled(!fumbled);
-    }
+    // if (current.fumble) {
+    //   changeMessage("You reach out and eventually find a string, maybe you should yank it?");
+    //   toggleFumbled(!fumbled);
+    // }
   }
 
   function makeInspectablesVisible(current, arr) {
@@ -134,10 +130,10 @@ function Display(props) {
   }
 
   function handleYank(current) {
-    if (fumbled) {
-      changeMessage("A speaker blares, and then there was light.");
-      makeInspectablesVisible(current, [0]);
-    }
+    // if (fumbled) {
+    //   changeMessage("A speaker blares, and then there was light.");
+    //   makeInspectablesVisible(current, [0]);
+    // }
   }
 
   function handleUsePortal(current) {
@@ -178,7 +174,6 @@ function Display(props) {
         }
   }
 
-
   function handleShowDirection(direction) {
     if (["up", "down"].includes(direction)) {
       return direction;
@@ -205,16 +200,16 @@ function Display(props) {
       }
   }
 
-
   function displayRooms(current) {
-
     let display = "Available directions: ";
+
     directions.forEach((x, index) => {
       if (current[x]) {
         display += "" + handleShowDirection(x) + ", "
       }
     }
     )
+
     display = display.slice(0, -2);
     display += ".";
     return display;
@@ -231,15 +226,16 @@ function Display(props) {
   }
 
   function processInspectableItem(item) {
-
     if (item.notvisible === true && !inspectableState.includes(item.title)) {
       return "";
+    }
+    else if (item.takentitle && takeIdArray.includes(item.takeid)) {
+      return "You see  " + item.takentitle + "\n";
     }
     else {
       return "You see  " + item.title + "\n";
     }
   }
-
 
   function displayKeys() {
     let display = "";
@@ -247,11 +243,15 @@ function Display(props) {
     if (keys > 0) {
       display += "You have " + keys + " key/s."
     }
-
     return display;
   }
 
+  function processSpecialRoomMessages(current){
+    switch(){
 
+    }
+    return "";
+  }
 
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
@@ -264,24 +264,28 @@ function Display(props) {
 
     return (
       <DisplayStyle>
-        <div style={headLine}>{current.name}</div>
-        <div>
+        <InnerDivs style={headLine}>{current.name}</InnerDivs>
+        <InnerDivs >
           {current.message}
-        </div>
-
-        <div>
+        </InnerDivs>
+        <InnerDivs >
+          {processSpecialRoomMessages(current)}
+        </InnerDivs>
+        <InnerDivs >
           {current.thought}
-        </div>
-        <div>
+        </InnerDivs>
+        <InnerDivs>
           {displayRooms(current)}
-        </div>
-        <div>
+        </InnerDivs>
+        <InnerDivs>
           {displayInspect(current)}
+        </InnerDivs>
+        <InnerDivs>
           {message}
-        </div>
-        <div>
+        </InnerDivs>
+        <InnerDivs>
           {displayKeys()}
-        </div>
+        </InnerDivs>
       </DisplayStyle>
     )
   }
