@@ -37,6 +37,7 @@ function Display(props) {
   const [inspectableState, setInspectableState] = useState([]);
   const [portalGun, togglePortalGun] = useState(false);
   const [takeIdArray, addToTakeIdArray] = useState([]);
+  const [visitedArray,addToVisitedArray] = useState([]);
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -93,6 +94,7 @@ function Display(props) {
   }
 
   function handleChangeRoom(current, direction) {
+    
     const roomDirection = handleToRoomDirection(direction);
 
     if (current[roomDirection]) {
@@ -105,6 +107,7 @@ function Display(props) {
           }
           else {
             changeRoom(current[roomDirection])
+            addToVisitedArray(...visitedArray, room);
           }
         }
         else {
@@ -113,28 +116,12 @@ function Display(props) {
       }
       else {
         changeRoom(current[roomDirection])
+        addToVisitedArray(...visitedArray, room);
       }
     }
   }
 
-  const [fumbled, toggleFumbled] = useState(false);
-  function handleFumbleAround(current) {
-    // if (current.fumble) {
-    //   changeMessage("You reach out and eventually find a string, maybe you should yank it?");
-    //   toggleFumbled(!fumbled);
-    // }
-  }
 
-  function makeInspectablesVisible(current, arr) {
-    arr.forEach(x => { setInspectableState([...inspectableState, current.inspectables[x].title]) });
-  }
-
-  function handleYank(current) {
-    // if (fumbled) {
-    //   changeMessage("A speaker blares, and then there was light.");
-    //   makeInspectablesVisible(current, [0]);
-    // }
-  }
 
   function handleUsePortal(current) {
     if (portalGun) {
@@ -145,6 +132,7 @@ function Display(props) {
   }
 
   function respondToCommandFromProps(current) {
+    
     changeMessage("");
 
     const inspectregex = new RegExp('^inspect ');
@@ -152,6 +140,8 @@ function Display(props) {
     const fumblearoundregex = new RegExp('^fumble around$');
     const yankregex = new RegExp('^yank');
     const useportalregex = new RegExp('^use portal$');
+
+    const transport = new RegExp('^transport ');
 
     if (unlockregex.test(props.command)) {
       conditionallyAddKeyToUsed(current, props.command);
@@ -172,7 +162,13 @@ function Display(props) {
         else if (useportalregex.test(props.command)) {
           handleUsePortal(current);
         }
+        else if (transport.test(props.command)) {
+          let room = props.command.match(/^transport (\w+)$/)[1];
+          changeRoom(room);
+        }
   }
+
+
 
   function handleShowDirection(direction) {
     if (["up", "down"].includes(direction)) {
@@ -200,7 +196,8 @@ function Display(props) {
       }
   }
 
-  function displayRooms(current) {
+  function displayDirections(current) {
+
     let display = "Available directions: ";
 
     directions.forEach((x, index) => {
@@ -245,12 +242,41 @@ function Display(props) {
     }
     return display;
   }
+  
+  function makeInspectablesVisible(arr) {
+    arr.forEach(x => { setInspectableState([...inspectableState, x.title]) });
+  }
 
-  function processSpecialRoomMessages(current){
-    switch(){
-
+  // special state functions for walkincloset
+  const [fumbled, toggleFumbled] = useState(false);
+  function handleFumbleAround(current) {
+    if (current.fumble) {
+      toggleFumbled(!fumbled);
     }
-    return "";
+  }
+
+  const [yanked, toggleYanked] = useState(false);
+  function handleYank(current) {
+    if (current.fumble && fumbled) {
+      toggleYanked(!yanked);
+      makeInspectablesVisible(current.inspectables);
+    }
+  }
+
+  const [displayedBlareMessage,toggleDisplayedBlareMessage] = useState(false)
+  function processSpecialRoomMessages(current) {
+    if (current.id === "walkincloset") {
+      if (fumbled !== true) {
+        return current.specialmessages[0];
+      }
+      else if (fumbled === true && yanked !== true) {
+        return current.specialmessages[1];
+      }
+      else if (fumbled === true && yanked === true && displayedBlareMessage !== true) {
+        toggleDisplayedBlareMessage(!displayedBlareMessage);
+        return current.specialmessages[2];
+      }
+    }
   }
 
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
@@ -275,7 +301,7 @@ function Display(props) {
           {current.thought}
         </InnerDivs>
         <InnerDivs>
-          {displayRooms(current)}
+          {displayDirections(current)}
         </InnerDivs>
         <InnerDivs>
           {displayInspect(current)}
