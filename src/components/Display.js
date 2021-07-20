@@ -38,6 +38,9 @@ function Display(props) {
   const [portalGun, togglePortalGun] = useState(false);
   const [takeIdArray, addToTakeIdArray] = useState([]);
   const [visitedArray,addToVisitedArray] = useState([]);
+  const [hideItem, setHideItem] = useState(false);
+  const [hasGlasses, setHasGlasses] = useState(false);
+  
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -58,12 +61,24 @@ function Display(props) {
     }
   }
 
+
+  function mysteryBoxStuff(current,item){
+    if ((current.inspectables).find(x => x.keywords.includes(item))) {
+      addToTakeIdArray(takeIdArray.filter(x => x !== "vasekey"));
+      setHasGlasses(true);
+    }
+  }
+
   function processInspectCommand(current, command) {
     const regex = new RegExp('^(inspect) (\\w+)$');
 
     let item = command.match(regex)[2];
-    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
 
+    mysteryBoxStuff(current, item);
+
+    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
+    //dont show the inspectable if being viewed/this is a clearable state.
+    setHideItem(inspectable.title);
     //prevent showing message for takeid that is already in inventory
     if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined) {
       changeMessage(inspectable.takemessage);
@@ -78,9 +93,25 @@ function Display(props) {
     }
   }
 
+  function handleUnlockBox(current) {
+    if(current.id === "mysteryroom")
+    {
+      if(Object.keys(holdKeys).find(x => holdKeys["commonarea"].direction === "forward")){
+        addToTakeIdArray(...takeIdArray,current.takeid);
+        
+      } 
+    }
+  }
+
   function conditionallyAddKeyToUsed(current, command) {
     const regex = new RegExp('^(unlock) (\\w+)$');
     let direction = command.match(regex)[2];
+
+    if(direction === "box"){
+      handleUnlockBox(current);
+      return;
+    }
+
     let key = Object.keys(holdKeys).find(x => holdKeys[room].direction === direction);
     let alreadyFound = holdKeys[key]?.used;
 
@@ -102,7 +133,6 @@ function Display(props) {
       if (current.locked?.[roomDirection]) {
         if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
           if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
-
             changeMessage("You must use your key to unlock this door before you can open it.")
           }
           else {
@@ -121,8 +151,6 @@ function Display(props) {
     }
   }
 
-
-
   function handleUsePortal(current) {
     if (portalGun) {
       let array = [...portalGun.rooms]
@@ -131,16 +159,19 @@ function Display(props) {
     }
   }
 
-  function respondToCommandFromProps(current) {
-    
+  function clearClearables(){
     changeMessage("");
+    setHideItem(false);
+  }
 
+  function respondToCommandFromProps(current) {
+    clearClearables();
+    
     const inspectregex = new RegExp('^inspect ');
     const unlockregex = new RegExp('^unlock ');
     const fumblearoundregex = new RegExp('^fumble around$');
     const yankregex = new RegExp('^yank');
     const useportalregex = new RegExp('^use portal$');
-
     const transport = new RegExp('^transport ');
 
     if (unlockregex.test(props.command)) {
@@ -167,8 +198,6 @@ function Display(props) {
           changeRoom(room);
         }
   }
-
-
 
   function handleShowDirection(direction) {
     if (["up", "down"].includes(direction)) {
@@ -197,7 +226,6 @@ function Display(props) {
   }
 
   function displayDirections(current) {
-
     let display = "Available directions: ";
 
     directions.forEach((x, index) => {
@@ -212,8 +240,10 @@ function Display(props) {
     return display;
   }
 
+
   function displayInspect(current) {
     let display = "";
+
     if (current?.inspectables) {
       current.inspectables.forEach(x => {
         display += processInspectableItem(x);
@@ -223,6 +253,9 @@ function Display(props) {
   }
 
   function processInspectableItem(item) {
+    if(hideItem === item.title){
+      return "";
+    }
     if (item.notvisible === true && !inspectableState.includes(item.title)) {
       return "";
     }
@@ -247,23 +280,32 @@ function Display(props) {
     arr.forEach(x => { setInspectableState([...inspectableState, x.title]) });
   }
 
+  function removeInspectablesFromVisible(arr) {
+    arr.forEach(x => { setInspectableState(inspectableState.filter(y => y !== x.title)) });
+  }
+
   // special state functions for walkincloset
   const [fumbled, toggleFumbled] = useState(false);
   function handleFumbleAround(current) {
-    if (current.fumble) {
+    if (current.fumble && !yanked && !fumbled) {
       toggleFumbled(!fumbled);
     }
   }
 
   const [yanked, toggleYanked] = useState(false);
   function handleYank(current) {
-    if (current.fumble && fumbled) {
-      toggleYanked(!yanked);
+    if (current.fumble && fumbled && !yanked) {
+      toggleYanked(true);
       makeInspectablesVisible(current.inspectables);
+    }
+    else if(current.fumble && yanked && fumbled) {
+      toggleYanked(false);
+      toggleFumbled(false);
+      removeInspectablesFromVisible(current.inspectables);
     }
   }
 
-  const [displayedBlareMessage,toggleDisplayedBlareMessage] = useState(false)
+  const [blared, toggleBlared] = useState(false);
   function processSpecialRoomMessages(current) {
     if (current.id === "walkincloset") {
       if (fumbled !== true) {
@@ -272,9 +314,10 @@ function Display(props) {
       else if (fumbled === true && yanked !== true) {
         return current.specialmessages[1];
       }
-      else if (fumbled === true && yanked === true && displayedBlareMessage !== true) {
-        toggleDisplayedBlareMessage(!displayedBlareMessage);
-        return current.specialmessages[2];
+      else if (fumbled === true && yanked === true && blared !== true) {
+        changeMessage(current.specialmessages[2]);
+        toggleBlared(true);
+        return "";
       }
     }
   }
@@ -297,6 +340,9 @@ function Display(props) {
         <InnerDivs >
           {processSpecialRoomMessages(current)}
         </InnerDivs>
+        <InnerDivs>
+          {message}
+        </InnerDivs>
         <InnerDivs >
           {current.thought}
         </InnerDivs>
@@ -305,9 +351,6 @@ function Display(props) {
         </InnerDivs>
         <InnerDivs>
           {displayInspect(current)}
-        </InnerDivs>
-        <InnerDivs>
-          {message}
         </InnerDivs>
         <InnerDivs>
           {displayKeys()}
