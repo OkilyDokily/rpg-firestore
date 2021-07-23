@@ -20,7 +20,6 @@ const InnerDivs = styled.div`
   margin-bottom: 10px;
 `;
 
-
 const headLine = {
   textDecoration: "underline"
 }
@@ -37,10 +36,10 @@ function Display(props) {
   const [inspectableState, setInspectableState] = useState([]);
   const [portalGun, togglePortalGun] = useState(false);
   const [takeIdArray, addToTakeIdArray] = useState([]);
-  const [visitedArray,addToVisitedArray] = useState([]);
+  const [visitedArray, addToVisitedArray] = useState([]);
   const [hideItem, setHideItem] = useState(false);
   const [hasGlasses, setHasGlasses] = useState(false);
-  
+  const [gameOver, setGameOver] = useState(false);
 
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
@@ -61,32 +60,47 @@ function Display(props) {
     }
   }
 
-
-  function mysteryBoxStuff(current,item){
-    if ((current.inspectables).find(x => x.keywords.includes(item))) {
+  function mysteryBoxStuff(current, item) {
+    if ((current.inspectables).find(x => x.keywords.includes(item)) && current.id === "mysteryroom") {
+      //return key to array so that it is reusable.
       addToTakeIdArray(takeIdArray.filter(x => x !== "vasekey"));
-      setHasGlasses(true);
     }
+  }
+
+  function itemIsLockedAndNotKey(item, inspectable) {
+    if (inspectable.locked && Object.keys(holdKeys).find(x => x.item === item)) {
+      return false;
+    }
+    return true;
+  }
+
+  function itemPreviouslyOpened(inspectable) {
+    return takeIdArray.includes(inspectable.takeid);
   }
 
   function processInspectCommand(current, command) {
     const regex = new RegExp('^(inspect) (\\w+)$');
-
+   
     let item = command.match(regex)[2];
-
+    
+    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
     mysteryBoxStuff(current, item);
 
-    const inspectable = (current.inspectables).find(x => x.keywords.includes(item));
     //dont show the inspectable if being viewed/this is a clearable state.
     setHideItem(inspectable.title);
+
     //prevent showing message for takeid that is already in inventory
-    if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined) {
+    if (inspectable.beforemessage !== undefined && itemIsLockedAndNotKey(item, inspectable) && !itemPreviouslyOpened(inspectable)) {
+      changeMessage(inspectable.beforemessage)
+    }
+    else if (!takeIdArray.includes(inspectable.takeid) && inspectable.takeid !== undefined && !(inspectable.locked === true)) {
       changeMessage(inspectable.takemessage);
     }
     else {
       changeMessage(inspectable.message);
     }
-    if (!takeIdArray.includes(inspectable.takeid)) {
+
+    if (!takeIdArray.includes(inspectable.takeid) && !(inspectable.locked === true)) {
       if (inspectable.takeid) {
         addItemToInventory(current.items[inspectable.takeid], inspectable.takeid);
       }
@@ -94,12 +108,19 @@ function Display(props) {
   }
 
   function handleUnlockBox(current) {
-    if(current.id === "mysteryroom")
-    {
-      if(Object.keys(holdKeys).find(x => holdKeys["commonarea"].direction === "forward")){
-        addToTakeIdArray(...takeIdArray,current.takeid);
-        
-      } 
+    if (current.id === "mysteryroom") {
+      if (Object.keys(holdKeys).find(x => holdKeys["commonarea"].direction === "forward")) {
+        const inspectable = current.inspectables.find(x => x.keywords.includes("box"))
+        if (!itemPreviouslyOpened(inspectable)) {
+          addToTakeIdArray([...takeIdArray, inspectable.takeid]);
+          const newKey = { ...holdKeys["commonarea"] }
+          newKey.used = true;
+          addKey({ ...holdKeys, "commonarea": { ...newKey } })
+          setHideItem(inspectable.title);
+          changeMessage(inspectable.takemessage);
+          setHasGlasses(true);
+        }
+      }
     }
   }
 
@@ -107,7 +128,7 @@ function Display(props) {
     const regex = new RegExp('^(unlock) (\\w+)$');
     let direction = command.match(regex)[2];
 
-    if(direction === "box"){
+    if (direction === "box") {
       handleUnlockBox(current);
       return;
     }
@@ -127,26 +148,32 @@ function Display(props) {
   function handleChangeRoom(current, direction) {
     
     const roomDirection = handleToRoomDirection(direction);
-
-    if (current[roomDirection]) {
-      setPreviousDirection(a.oppositeDirections[roomDirection]);
-      if (current.locked?.[roomDirection]) {
-        if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
-          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
-            changeMessage("You must use your key to unlock this door before you can open it.")
+    if (current["glassesdirections"]?.includes(direction) && hasGlasses) {
+      changeRoom(current["glasses" + direction]);
+    }
+    else if (!current.doorsinvisible === true || hasGlasses === true) {
+      
+      if (current[roomDirection]) {
+      
+        setPreviousDirection(a.oppositeDirections[roomDirection]);
+        if (current.locked?.[roomDirection]) {
+          if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
+            if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
+              changeMessage("You must use your key to unlock this door before you can open it.")
+            }
+            else {
+              changeRoom(current[roomDirection])
+              addToVisitedArray(...visitedArray, room);
+            }
           }
           else {
-            changeRoom(current[roomDirection])
-            addToVisitedArray(...visitedArray, room);
+            changeMessage("The door is locked.")
           }
         }
         else {
-          changeMessage("The door is locked.")
+          changeRoom(current[roomDirection])
+          addToVisitedArray(...visitedArray, room);
         }
-      }
-      else {
-        changeRoom(current[roomDirection])
-        addToVisitedArray(...visitedArray, room);
       }
     }
   }
@@ -159,44 +186,62 @@ function Display(props) {
     }
   }
 
-  function clearClearables(){
+  function handleGoInMatrix(current) {
+    if (current.id === "matrix") {
+      changeMessage(current.matrixmessage);
+      setGameOver(true);
+    }
+  }
+
+  function clearClearables() {
     changeMessage("");
     setHideItem(false);
   }
 
   function respondToCommandFromProps(current) {
     clearClearables();
-    
+    console.log(current,"command");
     const inspectregex = new RegExp('^inspect ');
     const unlockregex = new RegExp('^unlock ');
     const fumblearoundregex = new RegExp('^fumble around$');
     const yankregex = new RegExp('^yank');
     const useportalregex = new RegExp('^use portal$');
+    const goin = new RegExp('^go in$');
     const transport = new RegExp('^transport ');
+    const wearglasses = new RegExp('^wear glasses$');
 
-    if (unlockregex.test(props.command)) {
-      conditionallyAddKeyToUsed(current, props.command);
-    } else
-      if (inspectregex.test(props.command)) {
+    if (!gameOver) {
+      if (unlockregex.test(props.command)) {
+        conditionallyAddKeyToUsed(current, props.command);
+      }
+      else if (goin.test(props.command)) {
+        handleGoInMatrix(current);
+      }
+      else if (inspectregex.test(props.command)) {
         processInspectCommand(current, props.command);
-      } else
-        if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
-          let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
-          handleChangeRoom(current, direction);
-        }
-        else if (fumblearoundregex.test(props.command)) {
-          handleFumbleAround(current);
-        }
-        else if (yankregex.test(props.command)) {
-          handleYank(current);
-        }
-        else if (useportalregex.test(props.command)) {
-          handleUsePortal(current);
-        }
-        else if (transport.test(props.command)) {
-          let room = props.command.match(/^transport (\w+)$/)[1];
-          changeRoom(room);
-        }
+      }
+      else if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
+        let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
+        handleChangeRoom(current, direction);
+      }
+      else if (fumblearoundregex.test(props.command)) {
+        handleFumbleAround(current);
+      }
+      else if (yankregex.test(props.command)) {
+        handleYank(current);
+      }
+      else if (useportalregex.test(props.command)) {
+        handleUsePortal(current);
+      }
+      else if (transport.test(props.command)) {
+        let room = props.command.match(/^transport (\w+)$/)[1];
+        changeRoom(room);
+      }
+      else if (wearglasses.test(props.command)) {
+        setHasGlasses(true);
+      }
+    }
+
   }
 
   function handleShowDirection(direction) {
@@ -228,18 +273,21 @@ function Display(props) {
   function displayDirections(current) {
     let display = "Available directions: ";
 
-    directions.forEach((x, index) => {
-      if (current[x]) {
-        display += "" + handleShowDirection(x) + ", "
+    if (!current.doorsinvisible === true || hasGlasses === true) {
+      directions.forEach((x, index) => {
+        if (current[x]) {
+          display += "" + handleShowDirection(x) + ", "
+        }
       }
+      )
     }
-    )
-
     display = display.slice(0, -2);
     display += ".";
-    return display;
+    if (display !== "Available directions.") {
+      return display;
+    }
+    return "";
   }
-
 
   function displayInspect(current) {
     let display = "";
@@ -253,7 +301,7 @@ function Display(props) {
   }
 
   function processInspectableItem(item) {
-    if(hideItem === item.title){
+    if (hideItem === item.title) {
       return "";
     }
     if (item.notvisible === true && !inspectableState.includes(item.title)) {
@@ -275,7 +323,7 @@ function Display(props) {
     }
     return display;
   }
-  
+
   function makeInspectablesVisible(arr) {
     arr.forEach(x => { setInspectableState([...inspectableState, x.title]) });
   }
@@ -298,7 +346,7 @@ function Display(props) {
       toggleYanked(true);
       makeInspectablesVisible(current.inspectables);
     }
-    else if(current.fumble && yanked && fumbled) {
+    else if (current.fumble && yanked && fumbled) {
       toggleYanked(false);
       toggleFumbled(false);
       removeInspectablesFromVisible(current.inspectables);
@@ -320,12 +368,30 @@ function Display(props) {
         return "";
       }
     }
+    else if (current.id === "matrix") {
+      if (gameOver === true) {
+        return current.specialmessages[1];
+      }
+      else {
+        return current.specialmessages[0];
+      }
+    }
+  }
+
+  function processThought(current) {
+    if (current.glassesthought !== undefined && hasGlasses === true) {
+      return current.glassesthought;
+    }
+    else {
+      return current.thought;
+    }
   }
 
   if (isLoaded(rooms) && rooms !== undefined && rooms?.length) {
 
     let current = rooms.find(x => x.id === room);
-
+ 
+    console.log(current,"render");
     if (lastCall !== props.call) {
       respondToCommandFromProps(current);
       incrementCall(props.call);
@@ -344,7 +410,7 @@ function Display(props) {
           {message}
         </InnerDivs>
         <InnerDivs >
-          {current.thought}
+          {processThought(current)}
         </InnerDivs>
         <InnerDivs>
           {displayDirections(current)}
