@@ -1,4 +1,4 @@
-import React, { useState, useRef} from 'react'
+import React, { useState, useRef } from 'react'
 import styled from 'styled-components';
 import { useSelector } from 'react-redux';
 import { useFirestoreConnect, isLoaded } from 'react-redux-firebase';
@@ -43,20 +43,20 @@ function Display(props) {
 
   const [gameOver, setGameOver] = useState(false);
   const [matrixLines, setMatrixLines] = useState([]);
- 
+
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
   ]);
   const [delay, setDelay] = useState(1500);
   const [isRunning, setIsRunning] = useState(false);
- 
+
   useInterval(() => {
     addMatrixLinesFunc();
   }, isRunning ? delay : null);
 
 
   function addMatrixLinesFunc() {
-    if (delay > 400){
+    if (delay > 400) {
       setDelay(400);
     }
     function returnOneOrZero() {
@@ -64,13 +64,13 @@ function Display(props) {
     }
     const line = new Array(30).fill(1).map(() => returnOneOrZero()).join("");
     if (matrixLines.length <= 10) {
-      
-      setMatrixLines(x => [line,...x]);
+
+      setMatrixLines(x => [line, ...x]);
     }
-  
+
     else {
-      setMatrixLines(x => [line,...x.slice(0,10)]); 
-    } 
+      setMatrixLines(x => [line, ...x.slice(0, 10)]);
+    }
   }
 
   const rooms = useSelector(state => state.firestore.ordered["rooms"])
@@ -302,7 +302,7 @@ function Display(props) {
   }
 
   function displayDirections(current) {
-    let display = "Available directions: ";
+    let display = "Available directions. <go> <direction>: ";
 
     if (!current.doorsinvisible === true || hasGlasses === true) {
       directions.forEach((x, index) => {
@@ -314,19 +314,22 @@ function Display(props) {
     }
     display = display.slice(0, -2);
     display += ".";
-    if (display !== "Available directions.`<go> <direction>`") {
+    if (display !== "Available directions. <go> <direction>.") {
       return display;
     }
     return "";
   }
 
   function displayInspect(current) {
-    let display = "<inspect>";
+    let display = "";
 
     if (current?.inspectables) {
       current.inspectables.forEach(x => {
         display += processInspectableItem(x);
       })
+    }
+    if (display.length > 0) {
+      display += "Use <inspect> <item> to inspect it."
     }
     return display;
   }
