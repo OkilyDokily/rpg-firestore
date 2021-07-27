@@ -42,12 +42,12 @@ function Display(props) {
   const [hasGlasses, setHasGlasses] = useState(false);
 
   const [gameOver, setGameOver] = useState(false);
-  const [matrixLines, setMatrixLines] = useState(["","","","You now merge into the matrix."]);
+  const [matrixLines, setMatrixLines] = useState([]);
  
   useFirestoreConnect([
     { collection: 'rooms', storeAs: "rooms" }
   ]);
-  const [delay, setDelay] = useState(3000);
+  const [delay, setDelay] = useState(1500);
   const [isRunning, setIsRunning] = useState(false);
  
   useInterval(() => {
@@ -56,7 +56,7 @@ function Display(props) {
 
 
   function addMatrixLinesFunc() {
-    if (delay === 3000){
+    if (delay > 400){
       setDelay(400);
     }
     function returnOneOrZero() {
@@ -187,7 +187,7 @@ function Display(props) {
         if (current.locked?.[roomDirection]) {
           if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection)) {
             if (Object.keys(holdKeys).find(x => holdKeys[room]?.direction === roomDirection && holdKeys[room]?.used === false)) {
-              changeMessage("You must use your key to unlock this door before you can open it.")
+              changeMessage("You must use your key to unlock this door before you can open it. Try to <unlock> in the direction you need to go")
             }
             else {
               changeRoom(current[roomDirection])
@@ -217,15 +217,13 @@ function Display(props) {
 
   function handleGoInMatrix(current) {
     if (current.id === "matrix") {
-      changeMessage(current.matrixmessage);
+      changeMessage();
       setGameOver(true);
+      console.log(current.matrixmessage);
+      setMatrixLines(["\u2007", current.specialmessages[1]]);
       setIsRunning(true);
     }
   }
-
- 
-
- 
 
   function clearClearables() {
     changeMessage("");
@@ -316,14 +314,14 @@ function Display(props) {
     }
     display = display.slice(0, -2);
     display += ".";
-    if (display !== "Available directions.") {
+    if (display !== "Available directions.`<go> <direction>`") {
       return display;
     }
     return "";
   }
 
   function displayInspect(current) {
-    let display = "";
+    let display = "<inspect>";
 
     if (current?.inspectables) {
       current.inspectables.forEach(x => {
