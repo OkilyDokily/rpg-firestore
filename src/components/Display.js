@@ -253,7 +253,10 @@ function Display(props) {
       }
       else if (/^(move|go|walk|run|travel) (\w+)$/.test(props.command)) {
         let direction = props.command.match(/^(move|go|walk|run|travel) (\w+)$/)[2];
-        handleChangeRoom(current, direction);
+        if(directions.includes(direction))
+        {
+          handleChangeRoom(current, direction);
+        }
       }
       else if (fumblearoundregex.test(props.command)) {
         handleFumbleAround(current);
