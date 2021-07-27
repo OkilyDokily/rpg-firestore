@@ -63,13 +63,13 @@ function Display(props) {
       return Math.floor(Math.random() * 2) === 1 ? 1 : 0;
     }
     const line = new Array(30).fill(1).map(() => returnOneOrZero()).join("");
-    if (matrixLines.length <= 10) {
+    if (matrixLines.length <= 9) {
 
       setMatrixLines(x => [line, ...x]);
     }
 
     else {
-      setMatrixLines(x => [line, ...x.slice(0, 10)]);
+      setMatrixLines(x => [line, ...x.slice(0, 9)]);
     }
   }
 
