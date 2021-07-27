@@ -12,11 +12,7 @@ const AppStyle = styled.div`
     justify-content:center;
   `;
 
-
-
 function App() {
-
-
   useEffect(() => {
     ;
     document.getElementsByTagName("html")[0].addEventListener('click', returnFocus);

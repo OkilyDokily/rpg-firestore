@@ -47,6 +47,7 @@ function Console(){
   function sendCommand(){
     let newCommand = document.getElementById("command").value;
     changeCommand({command:newCommand,call:(command.call + 1)})
+    document.getElementById("command").value = "";
   }
 
  function pressEnter(e) {
